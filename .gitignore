@@ -1,0 +1,11 @@
+# 会社情報や他のプロジェクト（いったん除外）
+CloudFormation/
+ToDoList/
+asana-go/
+test/
+test.txt
+
+# C++のビルド成果物など（不要なファイル）
+*.out
+a.out
+
