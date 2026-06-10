@@ -1,0 +1,90 @@
+{
+  "Comment" : "st-hplinkage-mkt-data-init-sfn-job state machine ver.1.0",
+  "StartAt" : "CheckBizDay",
+  "States" : {
+    "CheckBizDay" : {
+      "Type" : "Task",
+      "Resource" : "arn:aws:states:::lambda:invoke",
+      "Parameters" : {
+        "FunctionName" : "arn:aws:lambda:ap-northeast-1:524179035706:function:st-common-bdcheck-job-function:$LATEST",
+        "Payload.$" : "$"
+      },
+      "Retry" : [ {
+        "ErrorEquals" : [ "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.Unknown" ],
+        "IntervalSeconds" : 2,
+        "MaxAttempts" : 6,
+        "BackoffRate" : 2
+      } ],
+      "Next" : "BizDayApiExecStatusCheck",
+      "ResultSelector" : {
+        "statusCode.$" : "$.Payload.statusCode",
+        "body.$" : "$.Payload.body"
+      },
+      "ResultPath" : "$.results"
+    },
+    "BizDayApiExecStatusCheck" : {
+      "Type" : "Choice",
+      "Choices" : [ {
+        "Variable" : "$.results.statusCode",
+        "NumericEquals" : 200,
+        "Next" : "ChoiceBizDay"
+      } ],
+      "Default" : "BizDayApiFailed"
+    },
+    "BizDayApiFailed" : {
+      "Type" : "Fail"
+    },
+    "ChoiceBizDay" : {
+      "Type" : "Choice",
+      "Choices" : [ {
+        "Or" : [ {
+          "Variable" : "$.results.body.isBizDay",
+          "BooleanEquals" : true
+        } ],
+        "Next" : "MktDataInitJob"
+      } ],
+      "Default" : "SkipSuccess"
+    },
+    "MktDataInitJob" : {
+      "Type" : "Task",
+      "Resource" : "arn:aws:states:::lambda:invoke",
+      "Parameters" : {
+        "FunctionName" : "arn:aws:lambda:ap-northeast-1:524179035706:function:st-hplinkage-mkt-data-init-job-function:$LATEST",
+        "Payload" : {
+          "body.$" : "$.body",
+          "results.$" : "$.results.body"
+        }
+      },
+      "Retry" : [ {
+        "ErrorEquals" : [ "Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.Unknown" ],
+        "IntervalSeconds" : 2,
+        "MaxAttempts" : 6,
+        "BackoffRate" : 2
+      } ],
+      "Next" : "ChoiceCheckMktDataInitJob",
+      "ResultPath" : "$.results",
+      "ResultSelector" : {
+        "statusCode.$" : "$.Payload.statusCode",
+        "body.$" : "$.Payload.body"
+      }
+    },
+    "ChoiceCheckMktDataInitJob" : {
+      "Type" : "Choice",
+      "Choices" : [ {
+        "Variable" : "$.results.statusCode",
+        "NumericEquals" : 200,
+        "Next" : "MktDataInitJobSuccess"
+      } ],
+      "Default" : "MktDataInitJobFailed"
+    },
+    "MktDataInitJobSuccess" : {
+      "Type" : "Succeed"
+    },
+    "MktDataInitJobFailed" : {
+      "Type" : "Fail"
+    },
+    "SkipSuccess" : {
+      "Type" : "Succeed"
+    }
+  }
+}
