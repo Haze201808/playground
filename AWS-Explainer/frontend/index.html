@@ -16,10 +16,14 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; transition: all 0.2s; }
     .drop-zone.dragover { border-color: #1a1a1a; background: #f3f4f6; }
-    .drop-zone.loaded { border-color: #16a34a; background: #f0fdf4; }
-    .history-item { cursor: pointer; border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #374151; transition: background 0.15s; word-break: break-all; }
+    .drop-zone.has-files { border-color: #16a34a; background: #f0fdf4; }
+    .history-item { cursor: pointer; border-radius: 6px; padding: 6px 8px; font-size: 12px; color: #374151; transition: background 0.15s; word-break: break-all; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
     .history-item:hover { background: #f3f4f6; }
     .history-item.active { background: #eff6ff; color: #2563eb; font-weight: 500; }
+    .history-item .item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pin-btn { flex-shrink: 0; opacity: 0; transition: opacity 0.15s; padding: 2px; border-radius: 3px; }
+    .history-item:hover .pin-btn { opacity: 1; }
+    .history-item .pin-btn.pinned { opacity: 1; }
     .markdown h1 { font-size: 1.2em; font-weight: 600; margin: 1em 0 0.5em; }
     .markdown h2 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.4em; }
     .markdown h3 { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.3em; }
@@ -32,6 +36,13 @@
     .markdown pre code { background: none; padding: 0; }
     .markdown strong { font-weight: 600; }
     .markdown hr { border: none; border-top: 1px solid #e5e7eb; margin: 1em 0; }
+    .chat-bubble-user { background: #1a1a1a; color: #fff; border-radius: 12px 12px 2px 12px; }
+    .chat-bubble-ai { background: #f3f4f6; color: #1a1a1a; border-radius: 12px 12px 12px 2px; }
+    .file-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; }
+    .file-tag-sf { background: #ede9fe; color: #6d28d9; }
+    .file-tag-cfn { background: #fef3c7; color: #92400e; }
+    .file-tag-lambda { background: #dbeafe; color: #1e40af; }
+    .file-tag-other { background: #f3f4f6; color: #374151; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -43,13 +54,28 @@
     <div class="px-4 py-4 border-b border-gray-100">
       <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">履歴</p>
     </div>
-    <div id="history-list" class="flex-1 overflow-y-auto p-2">
-      <p id="history-empty" class="text-xs text-gray-400 px-2 py-3">まだ履歴はありません</p>
+    <div class="flex-1 overflow-y-auto">
+      <!-- ピン済みセクション -->
+      <div id="pinned-section" class="hidden">
+        <div class="px-3 pt-3 pb-1 flex items-center gap-1">
+          <svg width="10" height="10" fill="#f59e0b" viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>
+          <p class="text-xs font-semibold text-amber-500 uppercase tracking-wide">ピン済み</p>
+        </div>
+        <div id="pinned-list" class="p-2 pt-0"></div>
+        <div class="mx-3 border-t border-gray-100 mb-1"></div>
+      </div>
+      <!-- 履歴セクション -->
+      <div id="history-section">
+        <div id="history-section-label" class="hidden px-3 pt-3 pb-1">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">履歴</p>
+        </div>
+        <div id="history-list" class="p-2 pt-1">
+          <p id="history-empty" class="text-xs text-gray-400 px-2 py-3">まだ履歴はありません</p>
+        </div>
+      </div>
     </div>
     <div class="p-3 border-t border-gray-100">
-      <button onclick="clearHistory()" class="w-full text-xs text-gray-400 hover:text-red-500 transition-colors py-1">
-        履歴をクリア
-      </button>
+      <button onclick="clearHistory()" class="w-full text-xs text-gray-400 hover:text-red-500 transition-colors py-1">履歴をクリア</button>
     </div>
   </div>
 
@@ -60,7 +86,7 @@
       <!-- ヘッダー -->
       <div class="mb-6">
         <h1 class="text-xl font-medium text-gray-900">AWS Explainer</h1>
-        <p class="text-sm text-gray-500 mt-1">定義ファイルを貼り付けるか、JSONファイルをドロップするとAIが説明します</p>
+        <p class="text-sm text-gray-500 mt-1">定義ファイルを貼り付けるか、複数ファイルをドロップするとAIが説明します</p>
       </div>
 
       <!-- 設定行 -->
@@ -74,50 +100,67 @@
         </div>
       </div>
 
-      <!-- タブ（固定4つ） -->
+      <!-- タブ -->
       <div class="flex gap-0 border-b border-gray-200 mb-3">
-        <button class="tab-btn tab-active shrink-0 px-4 py-2 text-sm" data-tab="Step Functions">Step Functions</button>
-        <button class="tab-btn tab-inactive shrink-0 px-4 py-2 text-sm" data-tab="CloudFormation">CloudFormation</button>
-        <button class="tab-btn tab-inactive shrink-0 px-4 py-2 text-sm" data-tab="AWS">その他</button>
+        <button class="tab-btn tab-active shrink-0 px-4 py-2 text-sm" data-tab="single">単一ファイル</button>
+        <button class="tab-btn tab-inactive shrink-0 px-4 py-2 text-sm" data-tab="multi">複数ファイル</button>
         <button id="tab-history-btn" class="tab-inactive shrink-0 px-4 py-2 text-sm flex items-center gap-1.5" onclick="switchToHistoryTab(null)">
           <span class="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
           履歴
         </button>
       </div>
 
-      <!-- 新規入力エリア -->
-      <div id="input-area">
-        <div
-          id="drop-zone"
-          class="drop-zone flex flex-col items-center justify-center gap-2 py-5 mb-3 cursor-pointer"
-          onclick="document.getElementById('file-input').click()"
-        >
-          <svg width="24" height="24" fill="none" stroke="#9ca3af" stroke-width="1.5" viewBox="0 0 24 24">
-            <path d="M12 16V8m0 0-3 3m3-3 3 3"/>
-            <path d="M20 16.7A4 4 0 0 0 18 9h-1.26A8 8 0 1 0 4 15.25"/>
-          </svg>
-          <p id="drop-label" class="text-sm text-gray-400">JSONファイルをここにドロップ、またはクリックして選択</p>
-          <input id="file-input" type="file" accept=".json,.yaml,.yml" class="hidden" onchange="handleFileSelect(event)" />
+      <!-- 単一ファイルエリア -->
+      <div id="area-single">
+        <!-- サブタブ -->
+        <div class="flex gap-0 border-b border-gray-100 mb-3">
+          <button class="subtab-btn subtab-active shrink-0 px-3 py-1.5 text-xs" data-subtab="Step Functions">Step Functions</button>
+          <button class="subtab-btn subtab-inactive shrink-0 px-3 py-1.5 text-xs" data-subtab="CloudFormation">CloudFormation</button>
+          <button class="subtab-btn subtab-inactive shrink-0 px-3 py-1.5 text-xs" data-subtab="Lambda">Lambda</button>
+          <button class="subtab-btn subtab-inactive shrink-0 px-3 py-1.5 text-xs" data-subtab="AWS">その他</button>
         </div>
-        <div class="mb-4">
-          <textarea
-            id="definition-input"
-            rows="10"
-            class="w-full px-3 py-2.5 text-sm font-mono border border-gray-200 rounded-lg bg-gray-50 text-gray-800 focus:outline-none focus:border-gray-400 focus:bg-white transition-colors"
-            placeholder='{"Comment": "My State Machine", "StartAt": "FirstState", "States": { ... }}'
-          ></textarea>
+        <div id="drop-zone-single" class="drop-zone flex flex-col items-center justify-center gap-2 py-5 mb-3 cursor-pointer" onclick="document.getElementById('file-input-single').click()">
+          <svg width="24" height="24" fill="none" stroke="#9ca3af" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 16V8m0 0-3 3m3-3 3 3"/><path d="M20 16.7A4 4 0 0 0 18 9h-1.26A8 8 0 1 0 4 15.25"/></svg>
+          <p id="drop-label-single" class="text-sm text-gray-400">ファイルをドロップ、またはクリックして選択</p>
+          <input id="file-input-single" type="file" accept=".json,.yaml,.yml,.py,.js,.ts" class="hidden" onchange="handleSingleFileSelect(event)" />
         </div>
+        <textarea id="definition-input" rows="10" class="w-full px-3 py-2.5 text-sm font-mono border border-gray-200 rounded-lg bg-gray-50 text-gray-800 focus:outline-none focus:border-gray-400 focus:bg-white transition-colors mb-4" placeholder='{"Comment": "My State Machine", "StartAt": "FirstState", "States": { ... }}'></textarea>
         <div class="flex gap-2 mb-6">
-          <button
-            id="explain-btn"
-            onclick="handleExplain()"
-            class="flex items-center gap-2 h-9 px-4 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          <button id="explain-btn-single" onclick="handleSingleExplain()" class="flex items-center gap-2 h-9 px-4 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             説明を生成
           </button>
-          <button onclick="clearInput()" class="h-9 px-4 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
-            クリア
+          <button onclick="clearSingle()" class="h-9 px-4 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">クリア</button>
+        </div>
+      </div>
+
+      <!-- 複数ファイルエリア -->
+      <div id="area-multi" class="hidden">
+        <div id="drop-zone-multi" class="drop-zone flex flex-col items-center justify-center gap-2 py-6 mb-3"
+          ondragover="event.preventDefault(); this.classList.add('dragover')"
+          ondragleave="this.classList.remove('dragover')"
+          ondrop="handleMultiDrop(event)">
+          <svg width="28" height="28" fill="none" stroke="#9ca3af" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 16V8m0 0-3 3m3-3 3 3"/><path d="M20 16.7A4 4 0 0 0 18 9h-1.26A8 8 0 1 0 4 15.25"/></svg>
+          <p class="text-sm text-gray-400">フォルダまたはファイルをここにドロップ</p>
+          <p class="text-xs text-gray-400">サブフォルダも再帰的に読み込みます</p>
+          <p class="text-xs text-gray-400">.json / .yaml / .yml / .py / .js / .ts</p>
+          <button onclick="document.getElementById('file-input-multi').click()" class="mt-1 text-xs text-gray-500 border border-gray-200 rounded px-3 py-1 hover:bg-gray-100">ファイルを選択</button>
+          <input id="file-input-multi" type="file" accept=".json,.yaml,.yml,.py,.js,.ts" multiple class="hidden" onchange="handleMultiFileSelect(event)" />
+        </div>
+
+        <!-- 読み込んだファイル一覧 -->
+        <div id="file-list" class="hidden mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">読み込んだファイル</p>
+            <button onclick="clearMultiFiles()" class="text-xs text-gray-400 hover:text-red-500">クリア</button>
+          </div>
+          <div id="file-list-items" class="flex flex-col gap-2"></div>
+        </div>
+
+        <div class="flex gap-2 mb-6">
+          <button id="explain-btn-multi" onclick="handleMultiExplain()" class="flex items-center gap-2 h-9 px-4 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            まとめて説明を生成
           </button>
         </div>
       </div>
@@ -130,14 +173,14 @@
         </div>
       </div>
 
-      <!-- 結果エリア -->
+      <!-- 説明結果エリア -->
       <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
           <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">説明</span>
           <span id="status-badge" class="hidden text-xs px-2 py-0.5 rounded-full"></span>
         </div>
         <div id="result-body" class="markdown px-4 py-4 text-sm text-gray-400 min-h-32 leading-relaxed">
-          定義ファイルを貼り付けて「説明を生成」を押してください
+          定義ファイルを読み込んで「説明を生成」を押してください
         </div>
       </div>
 
@@ -149,186 +192,409 @@
         </button>
       </div>
 
+      <!-- チャットエリア -->
+      <div id="chat-area" class="hidden mt-6">
+        <div class="border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+            <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">追加質問</span>
+            <button onclick="clearChat()" class="text-xs text-gray-400 hover:text-gray-600">チャットをリセット</button>
+          </div>
+          <div id="chat-messages" class="px-4 py-4 flex flex-col gap-3 min-h-16 max-h-96 overflow-y-auto">
+            <p class="text-xs text-gray-400 text-center">説明についての質問を入力してください</p>
+          </div>
+          <div class="border-t border-gray-100 p-3 flex gap-2">
+            <input id="chat-input" type="text" placeholder="例：このエラーハンドリングはなぜ必要ですか？"
+              class="flex-1 h-9 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400 bg-white"
+              onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendChat(); }" />
+            <button id="chat-send-btn" onclick="sendChat()"
+              class="h-9 px-4 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+              <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+              送信
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
 
 <script>
-  let currentTab = 'Step Functions';
+  let currentMainTab = 'single';
+  let currentSubTab = 'Step Functions';
   let currentHistoryId = null;
   let rawResultText = '';
-  let currentFilename = '';
+  let chatMessages = [];
+  let chatContext = '';
+  let multiFiles = []; // [{filename, content, type}]
 
-  const placeholders = {
-    'Step Functions': '{"Comment": "My State Machine", "StartAt": "FirstState", "States": { ... }}',
-    'CloudFormation': 'AWSTemplateFormatVersion: "2010-09-09"\nResources:\n  MyBucket:\n    Type: AWS::S3::Bucket',
-    'AWS': 'CDKコード、SAMテンプレート、ECSタスク定義など'
-  };
+  // ファイル種別の自動判別
+  function detectFileType(filename, content) {
+    const ext = filename.split('.').pop().toLowerCase();
+    if (['py', 'js', 'ts'].includes(ext)) return 'Lambda関数';
+    if (content.includes('StartAt') && content.includes('States')) return 'Step Functions';
+    if (content.includes('AWSTemplateFormatVersion') || (content.includes('Resources') && content.includes('Type:'))) return 'CloudFormation';
+    if (content.includes('def lambda_handler') || content.includes('exports.handler')) return 'Lambda関数';
+    return 'AWSリソース';
+  }
 
-  // 入力タブに切り替え
-  function switchToInputTab(tabName) {
-    currentTab = tabName;
+  function getFileTagClass(type) {
+    if (type === 'Step Functions') return 'file-tag file-tag-sf';
+    if (type === 'CloudFormation') return 'file-tag file-tag-cfn';
+    if (type === 'Lambda関数') return 'file-tag file-tag-lambda';
+    return 'file-tag file-tag-other';
+  }
+
+  // メインタブ切り替え
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.id === 'tab-history-btn') return;
+      switchToMainTab(btn.dataset.tab);
+    });
+  });
+
+  function switchToMainTab(tab) {
+    currentMainTab = tab;
     currentHistoryId = null;
 
-    document.getElementById('input-area').classList.remove('hidden');
+    document.getElementById('area-single').classList.toggle('hidden', tab !== 'single');
+    document.getElementById('area-multi').classList.toggle('hidden', tab !== 'multi');
     document.getElementById('history-area').classList.add('hidden');
-    document.getElementById('definition-input').placeholder = placeholders[tabName] || '';
 
     document.querySelectorAll('.tab-btn').forEach(b => {
-      b.className = b.dataset.tab === tabName
+      if (b.id === 'tab-history-btn') return;
+      b.className = b.dataset.tab === tab
         ? b.className.replace('tab-inactive', 'tab-active')
         : b.className.replace('tab-active', 'tab-inactive');
     });
-
-    const histBtn = document.getElementById('tab-history-btn');
-    histBtn.className = histBtn.className.replace('tab-history-active', 'tab-inactive');
-
+    document.getElementById('tab-history-btn').className =
+      document.getElementById('tab-history-btn').className.replace('tab-history-active', 'tab-inactive');
     document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
     resetResult();
   }
 
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchToInputTab(btn.dataset.tab));
+  // サブタブ切り替え（単一ファイル）
+  const subPlaceholders = {
+    'Step Functions': '{"Comment": "My State Machine", "StartAt": "FirstState", "States": { ... }}',
+    'CloudFormation': 'AWSTemplateFormatVersion: "2010-09-09"\nResources:\n  MyBucket:\n    Type: AWS::S3::Bucket',
+    'Lambda': 'def lambda_handler(event, context):\n    return {"statusCode": 200}',
+    'AWS': 'CDKコード、SAMテンプレートなど'
+  };
+
+  document.querySelectorAll('.subtab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentSubTab = btn.dataset.subtab;
+      document.querySelectorAll('.subtab-btn').forEach(b => {
+        b.className = b.dataset.subtab === currentSubTab
+          ? b.className.replace('subtab-inactive', 'subtab-active')
+          : b.className.replace('subtab-active', 'subtab-inactive');
+      });
+      document.getElementById('definition-input').placeholder = subPlaceholders[currentSubTab] || '';
+    });
   });
 
-  // 履歴タブに切り替え（idがnullなら最新を表示）
-  function switchToHistoryTab(id) {
-    const history = getHistory();
-    if (history.length === 0) return;
-
-    const targetId = id || history[0].id;
-    const item = history.find(h => h.id === targetId);
-    if (!item) return;
-
-    currentHistoryId = targetId;
-
-    document.getElementById('input-area').classList.add('hidden');
-    document.getElementById('history-area').classList.remove('hidden');
-    document.getElementById('history-area-title').textContent = item.filename;
-    document.getElementById('history-area-type').textContent = item.type;
-
-    // タブのアクティブ状態
-    document.querySelectorAll('.tab-btn').forEach(b => {
-      b.className = b.className.replace('tab-active', 'tab-inactive');
-    });
-    const histBtn = document.getElementById('tab-history-btn');
-    histBtn.className = histBtn.className.replace('tab-inactive', 'tab-history-active');
-
-    // サイドバーのアクティブ状態
-    document.querySelectorAll('.history-item').forEach(i => {
-      i.classList.toggle('active', i.dataset.historyId === targetId);
-    });
-
-    // 結果表示
-    rawResultText = item.result;
-    const resultBody = document.getElementById('result-body');
-    resultBody.className = 'markdown px-4 py-4 text-sm text-gray-800 min-h-32 leading-relaxed';
-    resultBody.innerHTML = marked.parse(item.result);
-
-    const badge = document.getElementById('status-badge');
-    badge.textContent = '履歴';
-    badge.className = 'text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600';
-    badge.classList.remove('hidden');
-    document.getElementById('copy-row').classList.remove('hidden');
-  }
-
-  // 履歴管理
-  function getHistory() {
-    return JSON.parse(localStorage.getItem('aws-explainer-history') || '[]');
-  }
-
-  function saveHistory(filename, type, result) {
-    const history = getHistory();
-    const id = Date.now().toString();
-    history.unshift({ id, filename, type, result });
-    if (history.length > 20) history.pop();
-    localStorage.setItem('aws-explainer-history', JSON.stringify(history));
-    renderHistoryList();
-    return id;
-  }
-
-  function renderHistoryList() {
-    const history = getHistory();
-    const list = document.getElementById('history-list');
-    const empty = document.getElementById('history-empty');
-
-    list.querySelectorAll('.history-item').forEach(el => el.remove());
-
-    if (history.length === 0) {
-      empty.classList.remove('hidden');
-      return;
-    }
-    empty.classList.add('hidden');
-
-    history.forEach(item => {
-      const el = document.createElement('div');
-      el.className = 'history-item';
-      el.dataset.historyId = item.id;
-      el.textContent = item.filename;
-      el.title = item.filename;
-      if (item.id === currentHistoryId) el.classList.add('active');
-      el.addEventListener('click', () => switchToHistoryTab(item.id));
-      list.appendChild(el);
-    });
-  }
-
-  function clearHistory() {
-    if (!confirm('履歴をすべて削除しますか？')) return;
-    localStorage.removeItem('aws-explainer-history');
-    renderHistoryList();
-    switchToInputTab('Step Functions');
-  }
-
-  // ドラッグ&ドロップ
-  const dropZone = document.getElementById('drop-zone');
-
-  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
+  // 単一ファイル読み込み
+  const dropZoneSingle = document.getElementById('drop-zone-single');
+  dropZoneSingle.addEventListener('dragover', e => { e.preventDefault(); dropZoneSingle.classList.add('dragover'); });
+  dropZoneSingle.addEventListener('dragleave', () => dropZoneSingle.classList.remove('dragover'));
+  dropZoneSingle.addEventListener('drop', e => {
+    e.preventDefault(); dropZoneSingle.classList.remove('dragover');
     const file = e.dataTransfer.files[0];
-    if (file) loadFile(file);
+    if (file) loadSingleFile(file);
   });
 
-  function handleFileSelect(event) {
+  function handleSingleFileSelect(event) {
     const file = event.target.files[0];
-    if (file) loadFile(file);
+    if (file) loadSingleFile(file);
   }
 
-  function loadFile(file) {
-    currentFilename = file.name;
+  function loadSingleFile(file) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = e => {
       document.getElementById('definition-input').value = e.target.result;
-      dropZone.classList.add('loaded');
-      const label = document.getElementById('drop-label');
-      label.textContent = `✓ ${file.name} を読み込みました`;
-      label.classList.remove('text-gray-400');
-      label.classList.add('text-green-600');
+      dropZoneSingle.classList.add('has-files');
+      document.getElementById('drop-label-single').textContent = `✓ ${file.name} を読み込みました`;
+      document.getElementById('drop-label-single').classList.replace('text-gray-400', 'text-green-600');
     };
     reader.readAsText(file);
   }
 
-  function clearInput() {
+  function clearSingle() {
     document.getElementById('definition-input').value = '';
-    document.getElementById('file-input').value = '';
-    currentFilename = '';
-    dropZone.classList.remove('loaded');
-    const label = document.getElementById('drop-label');
-    label.textContent = 'JSONファイルをここにドロップ、またはクリックして選択';
-    label.classList.remove('text-green-600');
-    label.classList.add('text-gray-400');
+    document.getElementById('file-input-single').value = '';
+    dropZoneSingle.classList.remove('has-files');
+    const label = document.getElementById('drop-label-single');
+    label.textContent = 'ファイルをドロップ、またはクリックして選択';
+    label.classList.replace('text-green-600', 'text-gray-400');
     resetResult();
   }
 
+  // 複数ファイル・フォルダ読み込み
+  const ALLOWED_EXTS = ['json', 'yaml', 'yml', 'py', 'js', 'ts'];
+  const EXCLUDE_PATTERNS = [
+    /^__init__\.py$/,
+    /^test_/,
+    /_test\.py$/,
+    /^conftest\.py$/,
+    /^buildspec/,
+    /^devcontainer/,
+    /^\.env/,
+    /^hello/,
+  ];
+
+  function isExcluded(filename) {
+    return EXCLUDE_PATTERNS.some(p => p.test(filename));
+  }
+
+  function isAllowedFile(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    if (!ALLOWED_EXTS.includes(ext)) return false;
+    if (isExcluded(filename)) return false;
+    return true;
+  }
+
+  // フォルダドロップ対応
+  async function handleMultiDrop(event) {
+    event.preventDefault();
+    document.getElementById('drop-zone-multi').classList.remove('dragover');
+
+    const items = Array.from(event.dataTransfer.items);
+    const allFiles = [];
+
+    for (const item of items) {
+      const entry = item.webkitGetAsEntry();
+      if (entry) await readEntry(entry, '', allFiles);
+    }
+
+    if (allFiles.length > 0) addMultiFiles(allFiles);
+  }
+
+  // エントリを再帰的に読み込む
+  async function readEntry(entry, basePath, results) {
+    if (entry.isFile) {
+      if (!isAllowedFile(entry.name)) return;
+      await new Promise(resolve => {
+        entry.file(file => {
+          const path = basePath ? `${basePath}/${entry.name}` : entry.name;
+          const reader = new FileReader();
+          reader.onload = e => {
+            results.push({ filename: entry.name, path, content: e.target.result });
+            resolve();
+          };
+          reader.readAsText(file);
+        });
+      });
+    } else if (entry.isDirectory) {
+      const newBase = basePath ? `${basePath}/${entry.name}` : entry.name;
+      const entries = await readAllEntries(entry);
+      for (const child of entries) {
+        await readEntry(child, newBase, results);
+      }
+    }
+  }
+
+  // DirectoryReaderで全エントリを取得（100件超え対応）
+  function readAllEntries(dirEntry) {
+    return new Promise(resolve => {
+      const reader = dirEntry.createReader();
+      const acc = [];
+      const readBatch = () => {
+        reader.readEntries(entries => {
+          if (entries.length === 0) resolve(acc);
+          else { acc.push(...entries); readBatch(); }
+        });
+      };
+      readBatch();
+    });
+  }
+
+  function handleMultiFileSelect(event) {
+    const files = Array.from(event.target.files);
+    const allFiles = files
+      .filter(f => isAllowedFile(f.name))
+      .map(f => ({ filename: f.name, path: f.name, file: f }));
+
+    const promises = allFiles.map(f => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => { f.content = e.target.result; resolve(); };
+      reader.readAsText(f.file);
+    }));
+    Promise.all(promises).then(() => addMultiFiles(allFiles));
+  }
+
+  function addMultiFiles(newFiles) {
+    newFiles.forEach(f => {
+      const content = f.content || '';
+      const type = detectFileType(f.filename, content);
+      const existing = multiFiles.findIndex(m => m.path === f.path);
+      if (existing >= 0) multiFiles[existing] = { filename: f.filename, path: f.path, content, type };
+      else multiFiles.push({ filename: f.filename, path: f.path, content, type });
+    });
+    renderFileList();
+  }
+
+  function renderFileList() {
+    const container = document.getElementById('file-list');
+    const items = document.getElementById('file-list-items');
+    if (multiFiles.length === 0) { container.classList.add('hidden'); return; }
+
+    container.classList.remove('hidden');
+    document.getElementById('drop-zone-multi').classList.add('has-files');
+    items.innerHTML = '';
+
+    multiFiles.forEach((f, idx) => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between px-3 py-2 bg-white border border-gray-200 rounded-lg';
+      const displayName = f.path || f.filename;
+      row.innerHTML = `
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="${getFileTagClass(f.type)}">${f.type}</span>
+          <span class="text-sm text-gray-700 truncate" title="${displayName}">${displayName}</span>
+        </div>
+        <button onclick="removeFile(${idx})" class="text-gray-300 hover:text-red-400 ml-2 shrink-0">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>`;
+      items.appendChild(row);
+    });
+  }
+
+  function removeFile(idx) {
+    multiFiles.splice(idx, 1);
+    if (multiFiles.length === 0) {
+      document.getElementById('drop-zone-multi').classList.remove('has-files');
+      document.getElementById('file-input-multi').value = '';
+    }
+    renderFileList();
+  }
+
+  function clearMultiFiles() {
+    multiFiles = [];
+    document.getElementById('file-input-multi').value = '';
+    document.getElementById('drop-zone-multi').classList.remove('has-files');
+    document.getElementById('file-list').classList.add('hidden');
+    document.getElementById('file-list-items').innerHTML = '';
+    resetResult();
+  }
+
+  // 単一ファイル説明生成
+  async function handleSingleExplain() {
+    const definition = document.getElementById('definition-input').value.trim();
+    const model = document.getElementById('model-select').value;
+    if (!definition) { alert('定義ファイルを貼り付けるかファイルをドロップしてください'); return; }
+
+    const btn = document.getElementById('explain-btn-single');
+    btn.disabled = true;
+    showLoading();
+
+    try {
+      const res = await fetch('/explain', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ definition, type_label: currentSubTab, model })
+      });
+      const data = await res.json();
+      if (data.error) showError(data.error);
+      else {
+        showResult(data.result);
+        const rawName = document.getElementById('drop-label-single').textContent.startsWith('✓')
+          ? document.getElementById('drop-label-single').textContent.replace('✓ ', '').replace(' を読み込みました', '')
+          : `${currentSubTab}_${new Date().toLocaleTimeString('ja-JP')}`;
+        const filename = rawName.replace(/\.(json|yaml|yml|py|js|ts)$/i, '');
+        saveHistory(filename, currentSubTab, data.result);
+      }
+    } catch (err) {
+      showError('サーバーに接続できませんでした。app.pyが起動しているか確認してください。');
+    } finally { btn.disabled = false; }
+  }
+
+  // 履歴名・種別を生成
+  function buildHistoryName(files) {
+    const hasLambda = files.some(f => f.type === 'Lambda関数');
+    if (hasLambda) {
+      // フォルダ名を取得（path の最初のセグメント）
+      const folderNames = [...new Set(
+        files
+          .map(f => f.path && f.path.includes('/') ? f.path.split('/')[0] : null)
+          .filter(Boolean)
+      )];
+      if (folderNames.length > 0) return folderNames.join(', ');
+    }
+    // Lambda以外はファイル名（拡張子除去）
+    return files.map(f => f.filename.replace(/\.(json|yaml|yml|py|js|ts)$/i, '')).join(', ');
+  }
+
+  function buildHistoryType(files) {
+    const types = [...new Set(files.map(f => f.type))];
+    return types.join(' + ');
+  }
+
+  // 複数ファイル説明生成
+  async function handleMultiExplain() {
+    if (multiFiles.length === 0) { alert('ファイルをドロップしてください'); return; }
+    const model = document.getElementById('model-select').value;
+    const btn = document.getElementById('explain-btn-multi');
+    btn.disabled = true;
+    showLoading();
+
+    try {
+      const res = await fetch('/explain', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: multiFiles, model })
+      });
+      const data = await res.json();
+      if (data.error) showError(data.error);
+      else {
+        showResult(data.result);
+        const historyName = buildHistoryName(multiFiles);
+        const historyType = buildHistoryType(multiFiles);
+        saveHistory(historyName, historyType, data.result);
+      }
+    } catch (err) {
+      showError('サーバーに接続できませんでした。app.pyが起動しているか確認してください。');
+    } finally { btn.disabled = false; }
+  }
+
+  // 結果表示系
+  function showLoading() {
+    document.getElementById('copy-row').classList.add('hidden');
+    document.getElementById('chat-area').classList.add('hidden');
+    const body = document.getElementById('result-body');
+    body.className = 'markdown px-4 py-4 text-sm text-gray-500 min-h-32 leading-relaxed flex items-center gap-2';
+    body.innerHTML = '<span class="spinner"></span> 生成中...';
+    document.getElementById('status-badge').classList.add('hidden');
+  }
+
+  function showResult(result) {
+    rawResultText = result;
+    const body = document.getElementById('result-body');
+    body.className = 'markdown px-4 py-4 text-sm text-gray-800 min-h-32 leading-relaxed';
+    body.innerHTML = marked.parse(result);
+    const badge = document.getElementById('status-badge');
+    badge.textContent = '完了'; badge.className = 'text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700';
+    badge.classList.remove('hidden');
+    document.getElementById('copy-row').classList.remove('hidden');
+    chatContext = result; chatMessages = [];
+    renderChatMessages();
+    document.getElementById('chat-area').classList.remove('hidden');
+  }
+
+  function showError(msg) {
+    const body = document.getElementById('result-body');
+    body.className = 'markdown px-4 py-4 text-sm text-red-500 min-h-32 leading-relaxed';
+    body.textContent = 'エラー: ' + msg;
+    const badge = document.getElementById('status-badge');
+    badge.textContent = 'エラー'; badge.className = 'text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600';
+    badge.classList.remove('hidden');
+  }
+
   function resetResult() {
-    rawResultText = '';
+    rawResultText = ''; chatContext = ''; chatMessages = [];
     const body = document.getElementById('result-body');
     body.className = 'markdown px-4 py-4 text-sm text-gray-400 min-h-32 leading-relaxed';
-    body.textContent = '定義ファイルを貼り付けて「説明を生成」を押してください';
+    body.textContent = '定義ファイルを読み込んで「説明を生成」を押してください';
     document.getElementById('status-badge').classList.add('hidden');
     document.getElementById('copy-row').classList.add('hidden');
+    document.getElementById('chat-area').classList.add('hidden');
+    renderChatMessages();
   }
 
   function copyResult() {
@@ -339,64 +605,206 @@
     });
   }
 
-  async function handleExplain() {
-    const definition = document.getElementById('definition-input').value.trim();
+  // チャット
+  async function sendChat() {
+    const input = document.getElementById('chat-input');
+    const question = input.value.trim();
+    if (!question) return;
     const model = document.getElementById('model-select').value;
-    const resultBody = document.getElementById('result-body');
-    const badge = document.getElementById('status-badge');
-    const btn = document.getElementById('explain-btn');
-    const copyRow = document.getElementById('copy-row');
+    const sendBtn = document.getElementById('chat-send-btn');
+    input.value = ''; input.disabled = true; sendBtn.disabled = true;
+    chatMessages.push({ role: 'user', content: question });
+    renderChatMessages(true);
 
-    if (!definition) { alert('定義ファイルを貼り付けるかファイルをドロップしてください'); return; }
-
-    btn.disabled = true;
-    copyRow.classList.add('hidden');
-    resultBody.className = 'markdown px-4 py-4 text-sm text-gray-500 min-h-32 leading-relaxed flex items-center gap-2';
-    resultBody.innerHTML = '<span class="spinner"></span> 生成中...';
-    badge.classList.add('hidden');
+    const messages = [
+      { role: 'user', content: `以下はAWS定義ファイルの説明です。この内容をコンテキストとして、ユーザーの質問に日本語で答えてください。\n\n---\n${chatContext}\n---` },
+      { role: 'assistant', content: 'わかりました。上記の説明についての質問にお答えします。' },
+      ...chatMessages
+    ];
 
     try {
-      const res = await fetch('/explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ definition, type_label: currentTab, model })
+      const res = await fetch('/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, model })
       });
-
       const data = await res.json();
-
-      if (data.error) {
-        resultBody.className = 'markdown px-4 py-4 text-sm text-red-500 min-h-32 leading-relaxed';
-        resultBody.textContent = 'エラー: ' + data.error;
-        badge.textContent = 'エラー';
-        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600';
-        badge.classList.remove('hidden');
-      } else {
-        rawResultText = data.result;
-        resultBody.className = 'markdown px-4 py-4 text-sm text-gray-800 min-h-32 leading-relaxed';
-        resultBody.innerHTML = marked.parse(data.result);
-        badge.textContent = '完了';
-        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700';
-        badge.classList.remove('hidden');
-        copyRow.classList.remove('hidden');
-
-        // 履歴に保存
-        const rawName = currentFilename || `${currentTab}_${new Date().toLocaleTimeString('ja-JP')}`;
-        const filename = rawName.replace(/\.(json|yaml|yml)$/i, '');
-        saveHistory(filename, currentTab, data.result);
-      }
-    } catch (err) {
-      resultBody.className = 'markdown px-4 py-4 text-sm text-red-500 min-h-32 leading-relaxed';
-      resultBody.textContent = 'エラー: サーバーに接続できませんでした。app.pyが起動しているか確認してください。';
-      badge.textContent = 'エラー';
-      badge.className = 'text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600';
-      badge.classList.remove('hidden');
+      chatMessages.push({ role: 'assistant', content: data.error ? 'エラー: ' + data.error : data.result });
+    } catch {
+      chatMessages.push({ role: 'assistant', content: 'エラー: サーバーに接続できませんでした。' });
     } finally {
-      btn.disabled = false;
+      input.disabled = false; sendBtn.disabled = false; input.focus();
+      renderChatMessages();
+    }
+  }
+
+  function renderChatMessages(loading = false) {
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = '';
+    if (chatMessages.length === 0 && !loading) {
+      container.innerHTML = '<p class="text-xs text-gray-400 text-center">説明についての質問を入力してください</p>';
+      return;
+    }
+    chatMessages.forEach(msg => {
+      const isUser = msg.role === 'user';
+      const wrapper = document.createElement('div');
+      wrapper.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+      const bubble = document.createElement('div');
+      bubble.className = `${isUser ? 'chat-bubble-user' : 'chat-bubble-ai markdown'} px-3 py-2 text-sm max-w-[85%]`;
+      if (isUser) bubble.textContent = msg.content;
+      else bubble.innerHTML = marked.parse(msg.content);
+      wrapper.appendChild(bubble); container.appendChild(wrapper);
+    });
+    if (loading) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex justify-start';
+      wrapper.innerHTML = '<div class="chat-bubble-ai px-3 py-2 text-sm flex items-center gap-1.5"><span class="spinner"></span><span class="text-gray-500">考え中...</span></div>';
+      container.appendChild(wrapper);
+    }
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function clearChat() { chatMessages = []; renderChatMessages(); }
+
+  // 履歴
+  function getHistory() { return JSON.parse(localStorage.getItem('aws-explainer-history') || '[]'); }
+
+  function saveHistory(filename, type, result) {
+    const history = getHistory();
+    const id = Date.now().toString();
+    // ピン済みは上限カウントから除外し、unpinnedが20件超えたら末尾を削除
+    const unpinned = history.filter(h => !h.pinned);
+    if (unpinned.length >= 20) {
+      const lastUnpinnedIdx = history.map((h, i) => (!h.pinned ? i : -1)).filter(i => i >= 0).pop();
+      if (lastUnpinnedIdx !== undefined) history.splice(lastUnpinnedIdx, 1);
+    }
+    history.unshift({ id, filename, type, result, pinned: false });
+    localStorage.setItem('aws-explainer-history', JSON.stringify(history));
+    renderHistoryList();
+    return id;
+  }
+
+  function togglePin(id, e) {
+    e.stopPropagation();
+    const history = getHistory();
+    const item = history.find(h => h.id === id);
+    if (!item) return;
+    item.pinned = !item.pinned;
+    localStorage.setItem('aws-explainer-history', JSON.stringify(history));
+    renderHistoryList();
+  }
+
+  function makeHistoryItem(item) {
+    const el = document.createElement('div');
+    el.className = 'history-item' + (item.id === currentHistoryId ? ' active' : '');
+    el.dataset.historyId = item.id;
+    el.title = item.filename;
+
+    const name = document.createElement('span');
+    name.className = 'item-name';
+    name.textContent = item.filename;
+
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'pin-btn' + (item.pinned ? ' pinned' : '');
+    pinBtn.title = item.pinned ? 'ピンを外す' : 'ピン留め';
+    pinBtn.innerHTML = item.pinned
+      ? `<svg width="11" height="11" fill="#f59e0b" viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`
+      : `<svg width="11" height="11" fill="none" stroke="#9ca3af" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
+    pinBtn.addEventListener('click', (e) => togglePin(item.id, e));
+
+    el.appendChild(name);
+    el.appendChild(pinBtn);
+    el.addEventListener('click', () => switchToHistoryTab(item.id));
+    return el;
+  }
+
+  function renderHistoryList() {
+    const history = getHistory();
+    const pinned = history.filter(h => h.pinned);
+    const unpinned = history.filter(h => !h.pinned);
+
+    // ピン済みセクション
+    const pinnedSection = document.getElementById('pinned-section');
+    const pinnedList = document.getElementById('pinned-list');
+    pinnedList.innerHTML = '';
+    if (pinned.length > 0) {
+      pinnedSection.classList.remove('hidden');
+      pinned.forEach(item => pinnedList.appendChild(makeHistoryItem(item)));
+    } else {
+      pinnedSection.classList.add('hidden');
+    }
+
+    // 履歴セクション
+    const historyList = document.getElementById('history-list');
+    historyList.querySelectorAll('.history-item').forEach(el => el.remove());
+    const empty = document.getElementById('history-empty');
+    const sectionLabel = document.getElementById('history-section-label');
+
+    if (unpinned.length === 0) {
+      empty.classList.remove('hidden');
+      sectionLabel.classList.add('hidden');
+    } else {
+      empty.classList.add('hidden');
+      // ピン済みがある場合だけ「履歴」ラベルを表示
+      sectionLabel.classList.toggle('hidden', pinned.length === 0);
+      unpinned.forEach(item => historyList.appendChild(makeHistoryItem(item)));
+    }
+  }
+
+  function switchToHistoryTab(id) {
+    const history = getHistory();
+    if (history.length === 0) return;
+    const item = history.find(h => h.id === (id || history[0].id));
+    if (!item) return;
+    currentHistoryId = item.id;
+
+    document.getElementById('area-single').classList.add('hidden');
+    document.getElementById('area-multi').classList.add('hidden');
+    document.getElementById('history-area').classList.remove('hidden');
+    document.getElementById('history-area-title').textContent = item.filename;
+    document.getElementById('history-area-type').textContent = item.type;
+
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      if (b.id !== 'tab-history-btn') b.className = b.className.replace('tab-active', 'tab-inactive');
+    });
+    const histBtn = document.getElementById('tab-history-btn');
+    histBtn.className = histBtn.className.replace('tab-inactive', 'tab-history-active');
+    document.querySelectorAll('.history-item').forEach(i => i.classList.toggle('active', i.dataset.historyId === item.id));
+
+    rawResultText = item.result;
+    const body = document.getElementById('result-body');
+    body.className = 'markdown px-4 py-4 text-sm text-gray-800 min-h-32 leading-relaxed';
+    body.innerHTML = marked.parse(item.result);
+    const badge = document.getElementById('status-badge');
+    const isPinned = item.pinned;
+    badge.textContent = isPinned ? 'ピン済み' : '履歴';
+    badge.className = `text-xs px-2 py-0.5 rounded-full ${isPinned ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`;
+    badge.classList.remove('hidden');
+    document.getElementById('copy-row').classList.remove('hidden');
+    chatContext = item.result; chatMessages = [];
+    renderChatMessages();
+    document.getElementById('chat-area').classList.remove('hidden');
+  }
+
+  function clearHistory() {
+    if (!confirm('履歴をクリアします。ピン留めした項目は残ります。')) return;
+    const history = getHistory();
+    const pinned = history.filter(h => h.pinned);
+    localStorage.setItem('aws-explainer-history', JSON.stringify(pinned));
+    renderHistoryList();
+    // 現在表示中がunpinnedだった場合のみタブをリセット
+    if (currentHistoryId) {
+      const stillExists = pinned.find(h => h.id === currentHistoryId);
+      if (!stillExists) switchToMainTab('single');
     }
   }
 
   // 初期化
   renderHistoryList();
+
+  // サブタブのスタイル定義
+  const style = document.createElement('style');
+  style.textContent = '.subtab-active { border-bottom: 2px solid #6b7280; color: #374151; font-weight: 500; } .subtab-inactive { border-bottom: 2px solid transparent; color: #9ca3af; }';
+  document.head.appendChild(style);
 </script>
 
 </body>

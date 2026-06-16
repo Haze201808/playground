@@ -5,11 +5,13 @@ JSON ファイルをドロップすると、AI がわかりやすく日本語で
 
 ## 機能
 
-- Step Functions / CloudFormation / その他の定義ファイルに対応  
-- JSON ファイルのドラッグ&ドロップ読み込み  
-- Gemini（Google AI Studio）/ Claude（Anthropic）の切り替え  
-- 説明結果の Markdown レンダリング  
-- 履歴機能（localStorage に自動保存、最大 20 件）  
+- Step Functions / CloudFormation / Lambda などの定義ファイルに対応
+- JSON / YAML / Python / JavaScript ファイルのドラッグ&ドロップ読み込み
+- **複数ファイルの一括読み込み**（フォルダごとドロップしてシステム全体を説明）
+- Gemini（Google AI Studio）/ Claude（Anthropic）の切り替え
+- 説明結果の Markdown レンダリング
+- 履歴機能（localStorage に自動保存、最大 20 件）
+- **ピン留め機能**（重要な履歴をサイドバー上部に固定表示）
 
 ## ディレクトリ構成
 
@@ -23,7 +25,6 @@ aws-explainer/
     └── index.html
 ```
 
-```
 ## セットアップ
 
 ### 1. 仮想環境を有効化してパッケージをインストール
@@ -34,8 +35,6 @@ uv pip install flask flask-cors requests python-dotenv
 ```
 
 ### 2. `.env` ファイルを作成して API キーを設定
-
-`.env`に API キーを設定。  
 
 ```
 GEMINI_API_KEY=your_api_key_here
@@ -48,11 +47,15 @@ GEMINI_API_KEY=your_api_key_here
 python app.py
 ```
 
-ブラウザで `http://localhost:5000` を開きます(今回はchrome)。
+ブラウザで `http://localhost:5000` を開きます。
 
 ## 使い方
 
-### 定義ファイルの取得（Step Functions の場合）
+### 単一ファイルの説明
+
+取得した定義ファイルをドロップエリアにドラッグ&ドロップして「説明を生成」を押下。
+
+**Step Functions の定義ファイル取得例：**
 
 ```bash
 aws stepfunctions describe-state-machine \
@@ -61,15 +64,25 @@ aws stepfunctions describe-state-machine \
   --output text > definition.json
 ```
 
-取得した `definition.json` をブラウザのドロップエリアに  
-ドラッグ&ドロップして「説明を生成」を押下。  
+### 複数ファイルの一括説明
+
+Lambda 関数などをフォルダごとドロップすると、ファイル間の連携を含めてシステム全体を説明。  
+対応拡張子：`.py` `.js` `.ts` `.json` `.yaml` `.yml`
+
+### ピン留め機能
+
+- 履歴アイテムにホバーすると星アイコンが表示される
+- クリックでピン留め → サイドバー上部の「ピン済み」セクションに固定表示
+- もう一度クリックで解除
+- 「履歴をクリア」ではピン留め済みの項目は削除されない
 
 ## 構成画面
-![image](./images/gamen.png) 
+
+![image](./images/gamen.png)
 
 ## AI モデルについて
 
-| | Gemini 2.5 Flash | Claude Sonnet |
+| | Gemini 2.5 Flash Lite | Claude Sonnet |
 |---|---|---|
 | 速度 | 速い | やや遅い |
 | 説明の詳しさ | 十分 | より丁寧・構造的 |
@@ -98,7 +111,7 @@ curl "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_API_KEY"
 ### API 接続確認
 
 ```bash
-curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=YOUR_API_KEY" \
+curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contents":[{"parts":[{"text":"日本語で「こんにちは」と返してください"}]}]}'
 ```
@@ -111,7 +124,7 @@ curl -s -X POST http://localhost:5000/explain \
   -d '{"definition": "test", "type_label": "Step Functions", "model": "gemini"}'
 ```
 
-### 503エラー の対処
+### 503 エラーの対処
 
-会社のプロキシやファイアウォールが Google の API への通信をブロックしている可能性がある。  
-上記の `curl` コマンドで直接 API に疎通できるか確認を行った。
+プロキシやファイアウォールが API への通信をブロックしている可能性がある。  
+上記の `curl` コマンドで直接 API に疎通できるか確認する。
