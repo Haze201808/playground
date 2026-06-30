@@ -9,3 +9,8 @@ test.txt
 *.out
 a.out
 
+# 別のリポジトリにしたため、除外
+langchain-rag
+
+# 不要
+.vscode
