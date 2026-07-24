@@ -1,0 +1,8 @@
+snapshots/
+archive/
+diffs/
+config.json
+tracker
+cron.log
+
+
