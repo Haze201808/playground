@@ -1,0 +1,20 @@
+{
+  "google_chat_webhook_url": "https://chat.googleapis.com/v1/spaces/...",
+  "state_machines": [
+    {
+      "name": "1. データ取り込み処理",
+      "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:DataIngestionStateMachine",
+      "group": "0000"
+    },
+    {
+      "name": "2. バッチ集計処理",
+      "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:BatchCalcStateMachine",
+      "group": "1200"
+    },
+    {
+      "name": "3. レポート作成処理",
+      "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:ReportStateMachine",
+      "group": "1500"
+    }
+  ]
+}
