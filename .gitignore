@@ -14,3 +14,11 @@ langchain-rag
 
 # 不要
 .vscode
+template/
+.env
+.env.dev
+.env.uat
+config.json
+cron.log
+aws-sso-login*
+

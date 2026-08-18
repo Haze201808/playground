@@ -42,8 +42,11 @@ python -m pip install --index-url https://pypi.org/simple jpholiday
 
 ### 2. 設定ファイルの作成
 
-プロジェクト直下に config.json.exampleをこぴーしてconfig.json を作成。  
-監視対象の Step Functions や Webhook 情報を設定。
+プロジェクト直下に config.json.exampleをこコピーしてconfig.json を作成。  
+監視対象の Step Functions や Webhook 情報を設定。  
+AWSのマルチアカウント対応のため、profileを設定。  
+※ただし、一日一回aws sso loginをする必要あり。
+(2026/08/18 ARN一括取得用にexport_sfns.pyを追加)
 
 ## 💻 使い方
 

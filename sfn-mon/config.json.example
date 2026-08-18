@@ -4,17 +4,21 @@
     {
       "name": "1. データ取り込み処理",
       "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:DataIngestionStateMachine",
-      "group": "0000"
+      "group": "0000",
+      "profile": "dev-account-a"
     },
     {
       "name": "2. バッチ集計処理",
       "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:BatchCalcStateMachine",
-      "group": "1200"
+      "group": "1200",
+      "profile": "dev-account-b",
+      "notif": true
     },
     {
       "name": "3. レポート作成処理",
       "arn": "arn:aws:states:ap-northeast-1:123456789012:stateMachine:ReportStateMachine",
-      "group": "1500"
+      "group": "1500",
+      "profile": "dev-account-a"
     }
   ]
 }
