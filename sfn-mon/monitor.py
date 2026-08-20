@@ -8,7 +8,7 @@ import boto3
 import jpholiday
 
 # SSL証明書パスの設定
-os.environ["AWS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+os.environ["AWS_CA_BUNDLE"] = "/home/okuhira/.cert/odx_awscli_cert.pem"
 today = datetime.now().date()
 
 def is_business_day():

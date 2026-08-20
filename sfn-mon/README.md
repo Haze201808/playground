@@ -42,11 +42,15 @@ python -m pip install --index-url https://pypi.org/simple jpholiday
 
 ### 2. 設定ファイルの作成
 
-プロジェクト直下に config.json.exampleをこコピーしてconfig.json を作成。  
-監視対象の Step Functions や Webhook 情報を設定。  
-AWSのマルチアカウント対応のため、profileを設定。  
-※ただし、一日一回aws sso loginをする必要あり。
-(2026/08/18 ARN一括取得用にexport_sfns.pyを追加)
+- プロジェクト直下に config.json.exampleをこコピーしてconfig.json を作成。  
+  監視対象の Step Functions や Webhook 情報を設定。  
+  AWSのマルチアカウント対応のため、profileを設定。  
+  ※ただし、一日一回aws sso loginをする必要あり。
+- ARN一括取得用にexport_sfns.pyを追加。  
+  config.jsonと比較。  
+  ARNを取得し、新規・削除処理を行う。  
+  既存はそのまま。  
+  新規追加時、groupは"unassigned"で設定。
 
 ## 💻 使い方
 
