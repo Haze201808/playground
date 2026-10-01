@@ -7,6 +7,8 @@ test.txt
 
 # C++のビルド成果物など（不要なファイル）
 *.out
+*.pem
+*.crt
 a.out
 
 # 別のリポジトリにしたため、除外
@@ -19,6 +21,7 @@ template/
 .env.dev
 .env.uat
 config.json
+config.env
 cron.log
 aws-sso-login*
 
