@@ -4,7 +4,7 @@ SCRIPT_DIR="\((cd "\)(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/config.env" ]; then
     source "${SCRIPT_DIR}/config.env"
 else
-    echo "エラー: config.env が見つかりません。"
+    echo "エラー: config.env が見つかりません。config.env.example を参考に作成してください。"
     exit 1
 fi
 
