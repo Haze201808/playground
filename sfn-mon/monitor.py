@@ -1,38 +1,31 @@
+import sys
 from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
-import sys
 import urllib.request
 import boto3
+from dotenv import load_dotenv
 import jpholiday
 
-# SSL証明書パスの設定
-os.environ["AWS_CA_BUNDLE"] = "/home/okuhira/.cert/odx_awscli_cert.pem"
+base_dir = Path(__file__).resolve().parent
+load_dotenv(base_dir / ".env")
+
+if os.getenv("AWS_CA_BUNDLE"):
+    os.environ["AWS_CA_BUNDLE"] = os.getenv("AWS_CA_BUNDLE")
+
 today = datetime.now().date()
+ENVIRONMENTS = ["dev", "uat", "prod", "hp", "back_prod"]
 
 def is_business_day():
-    # 営業日判定
     if today.weekday() >= 5:
         print(f"本日（{today}）は土日のため処理をスキップ。")
         return False
-
     if jpholiday.is_holiday(today):
         holiday_name = jpholiday.is_holiday_name(today)
-        print(
-            f"本日（{today}）は祝日（{holiday_name}）のため処理をスキップ。"
-        )
+        print(f"本日（{today}）は祝日（{holiday_name}）のため処理をスキップ。")
         return False
-
     return True
-
-
-def load_config():
-    base_dir = Path(__file__).resolve().parent
-    config_path = base_dir / "config.json"
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 
 def get_latest_execution_status(sfn_client, state_machine_arn):
@@ -51,21 +44,16 @@ def get_latest_execution_status(sfn_client, state_machine_arn):
         start_date = latest.get("startDate")
         if start_date:
             jst_tz = timezone(timedelta(hours=9))
-            exec_time = start_date.astimezone(jst_tz).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            exec_time = start_date.astimezone(jst_tz).strftime("%Y-%m-%d %H:%M:%S")
         else:
             exec_time = "N/A"
 
         return status, name, exec_time
     except Exception as e:
-        print(f"[ERROR detail] {state_machine_arn} の取得に失敗した:")
-        print(f"  -> {e}")
         return "ERROR", str(e), "N/A"
 
 
 def send_google_chat(webhook_url, message, thread_name=None):
-    # Google Chatへの送信処理
     url = webhook_url
     payload = {"text": message}
 
@@ -75,27 +63,32 @@ def send_google_chat(webhook_url, message, thread_name=None):
 
     headers = {"Content-Type": "application/json; charset=UTF-8"}
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers=headers, method="POST"
-    )
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     with urllib.request.urlopen(req) as response:
         return response.status
 
 
-def main():
-    if not is_business_day():
+def process_environment(env, target_group):
+    config_path = base_dir / f"{env}_config.json"
+    if not config_path.exists():
         return
 
-    config = load_config()
-    target_group = sys.argv[1] if len(sys.argv) > 1 else None
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
 
-    lines = ["📊 *Step Functions 実行ステータス確認* 📊", ""]
+    webhook_url = config.get("google_chat_webhook_url")
+    thread_name = config.get("thread_name")
+    
+    if not webhook_url:
+        return
+
+    lines = [f"📊 *Step Functions 実行ステータス確認 [{env.upper()}]* 📊", ""]
     has_failure = False
     has_always_notify_target = False
     checked_count = 0
 
-    for target in config["state_machines"]:
+    for target in config.get("state_machines", []):
         if target_group and target.get("group") != target_group:
             continue
 
@@ -105,16 +98,10 @@ def main():
         profile = target.get("profile")
 
         try:
-            if profile:
-                session = boto3.Session(profile_name=profile)
-                sfn = session.client("stepfunctions")
-            else:
-                sfn = boto3.client("stepfunctions")
+            session = boto3.Session(profile_name=profile)
+            sfn = session.client("stepfunctions")
         except Exception as e:
-            print(
-                f"[PROFILE ERROR] プロファイル [{profile}] の読み込みに失敗: {e}"
-            )
-            lines.append(f"❌ *{name}*: `認証エラー (Profile: {profile})`")
+            lines.append(f"❌ *{name}*: `認証エラー`")
             has_failure = True
             continue
 
@@ -135,30 +122,33 @@ def main():
         lines.append(f"    ├ 実行name: {exec_name}")
         lines.append(f"    └ 実行日時: {exec_time}")
 
+    # 対象がない場合はスキップ
     if checked_count == 0:
-        print(
-            f"{today}：対象のグループ [{target_group}] が見つからないか、対象関数がありませんでした。"
-        )
         return
 
     should_send = has_failure or has_always_notify_target
-
     if not should_send:
-        print(
-            f"{today}：グループ [{target_group}] は全件正常終了かつ注視対象もないため、通知をスキップ。"
-        )
+        print(f"{today}：グループ [{target_group}] ：[{env.upper()}] 全件正常終了(または注視対象なし)のため通知スキップ。")
         return
 
     if has_failure:
         lines.insert(1, "⚠️ *失敗している処理があります！*")
 
     message_text = "\n".join(lines)
-    send_google_chat(
-        config["google_chat_webhook_url"],
-        message_text,
-        config.get("thread_name"),
-    )
-    print(f"{today}：通知を送信しました。")
+    send_google_chat(webhook_url, message_text, thread_name)
+    print(f"{today}：グループ [{target_group}] ：[{env.upper()}] 通知を送信しました。")
+
+
+def main():
+    if not is_business_day():
+        return
+
+    # cron実行用に、引数がない場合は None、ある場合は group と見なす
+    target_group = sys.argv[1] if len(sys.argv) > 1 else None
+
+    # 各環境の config を順番に処理
+    for env in ENVIRONMENTS:
+        process_environment(env, target_group)
 
 
 if __name__ == "__main__":
